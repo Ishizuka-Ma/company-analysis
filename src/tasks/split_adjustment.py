@@ -1,13 +1,17 @@
 import re
 import time
-from typing import List
+from typing import List, Dict, Union, Optional
 import numpy as np
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
-
 import os
 import datetime
+from pathlib import Path
+import logging
+
+# ロガーの設定
+from src.utils.log_config import logger
 
 URL = "https://ca.image.jp/matsui/"
 
@@ -16,8 +20,17 @@ class SplitAdjustment:
     更新日 / コード / 銘柄名 / 市場区分 / 分割比率
     を取得して既存の株価データを更新します。
     """
-    def __init__(self):
+    def __init__(self, processed_data_dir: str = "data/processed"):
+        """初期化
+        
+        Args:
+            processed_data_dir: 処理済みデータディレクトリのパス
+        """
         self.URL = URL
+        self.processed_data_dir = Path(processed_data_dir)
+        self.prices_dir = self.processed_data_dir / "prices"
+        
+        self.prices_dir.mkdir(parents=True, exist_ok=True)
 
     def fetch_split_html(self,type: int, page: int = 1, seldate: int = 3) -> str:
         """
@@ -130,29 +143,153 @@ class SplitAdjustment:
         merged["分割比率"] = merged["分割比率"].apply(self.ratio_to_float)
         return merged
 
-    # 既存の株価データと株式分割情報を利用して修正
-    def apply_split_adjustments(self, stock_prices, split_data):
-        today = datetime.datetime.now().date()
-        pre_stock_prices = stock_prices.copy()
+    def load_stock_price(self, ticker: str) -> Optional[pd.DataFrame]:
+        """
+        指定した銘柄の株価データを読み込む
         
-        # 当日の株価データは修正後の値であるため、当日以前のデータを修正
-        if today in split_data['更新日'].values:       
-            for _, row in split_data.iterrows():
-                ticker = row["コード"] 
-                ratio = row["分割比率"]
-                # 該当銘柄の分割日前のデータを修正
-                mask = (pre_stock_prices['コード'] == ticker) & (pre_stock_prices['日付'] < today)
-                pre_stock_prices.loc[mask, ['Open', 'High', 'Low', 'Close']] *= ratio
-                pre_stock_prices.loc[mask, 'volume'] /= ratio
-        return pre_stock_prices
+        Args:
+            ticker: 銘柄コード
+            
+        Returns:
+            株価データのDataFrame、存在しない場合はNone
+        """
+        file_path = self.prices_dir / f"{ticker}.parquet"
+        
+        if not file_path.exists():
+            logger.warning(f"銘柄 {ticker} の株価データファイルが存在しません: {file_path}")
+            return None
+        
+        try:
+            return pd.read_parquet(file_path)
+        except Exception as e:
+            logger.error(f"株価データの読み込みエラー ({file_path}): {e}")
+            return None
+    
+    def save_stock_price(self, ticker: str, df: pd.DataFrame) -> None:
+        """
+        株価データを保存する
+        
+        Args:
+            ticker: 銘柄コード
+            df: 保存する株価データ
+        """
+        if df is None or df.empty:
+            logger.warning(f"銘柄 {ticker} の保存する株価データがありません")
+            return
+            
+        file_path = self.prices_dir / f"{ticker}.parquet"
+        
+        try:
+            df.to_parquet(file_path)
+            logger.info(f"銘柄 {ticker} の株価データを保存しました: {file_path}")
+        except Exception as e:
+            logger.error(f"株価データの保存エラー ({file_path}): {e}")
+
+    def apply_split_adjustment(self, ticker: str, ratio: float) -> bool:
+        """
+        指定した銘柄の株価データに分割比率を適用する
+        
+        Args:
+            ticker: 銘柄コード
+            ratio: 分割比率
+            
+        Returns:
+            処理成功したらTrue、失敗したらFalse
+        """
+        df = self.load_stock_price(ticker)
+        if df is None:
+            return False
+            
+        try:
+            # 当日以前のデータを修正（当日の株価データは修正後の値であるため）
+            today = datetime.datetime.now().date()
+            
+            # 日付カラムがインデックスの場合とカラムの場合を考慮
+            if df.index.name == "Date" or isinstance(df.index, pd.DatetimeIndex):
+                mask = df.index.date < today
+                # 株価と出来高を調整
+                price_columns = ["Open", "High", "Low", "Close"]
+                volume_column = "Volume"
+                
+                # 実際に存在するカラムだけを処理
+                existing_price_cols = [col for col in price_columns if col in df.columns]
+                
+                if existing_price_cols:
+                    df.loc[mask, existing_price_cols] *= ratio
+                
+                if volume_column in df.columns:
+                    df.loc[mask, volume_column] /= ratio
+            else:
+                # 日付がカラムの場合
+                date_col = next((col for col in df.columns if "date" in col.lower()), None)
+                
+                if date_col:
+                    mask = pd.to_datetime(df[date_col]).dt.date < today
+                    
+                    # 株価カラムを特定
+                    price_cols = [col for col in df.columns if any(name in col.lower() for name in ["open", "high", "low", "close", "price", "adj"])]
+                    volume_col = next((col for col in df.columns if "volume" in col.lower()), None)
+                    
+                    if price_cols:
+                        for col in price_cols:
+                            df.loc[mask, col] *= ratio
+                    
+                    if volume_col:
+                        df.loc[mask, volume_col] /= ratio
+            
+            # 更新したデータを保存
+            self.save_stock_price(ticker, df)
+            logger.info(f"銘柄 {ticker} の株価データを分割比率 {ratio} で調整しました")
+            logger.info(f"銘柄 {ticker} \n df.tail()")
+            return True
+            
+        except Exception as e:
+            logger.error(f"分割調整処理エラー (銘柄 {ticker}): {e}")
+            return False
+
+    def update_split_adjustments(self) -> None:
+        """
+        本日の株式分割・株式合併情報を取得して株価データを調整する
+        """
+        # 株式分割情報取得
+        split_df = self.scrape_all(type=0, seldate=1)  # type=0: 株式分割, seldate=1: 今日
+        
+        # 株式合併情報取得
+        merger_df = self.scrape_all(type=5, seldate=1)  # type=5: 株式合併, seldate=1: 今日
+        
+        # 両方をマージ
+        all_df = pd.concat([split_df, merger_df], ignore_index=True)
+        
+        if all_df.empty:
+            logger.info("本日の株式分割・株式合併情報はありません")
+            return
+            
+        # 本日の株式分割・株式合併を適用
+        today = datetime.datetime.now().date()
+        today_df = all_df[all_df["更新日"].dt.date == today]
+        
+        if today_df.empty:
+            logger.info("本日の株式分割・株式合併情報はありません")
+            return
+            
+        # 銘柄ごとに株価調整を実行
+        success_count = 0
+        for _, row in today_df.iterrows():
+            ticker = row["コード"]
+            ratio = row["分割比率"]
+            
+            if pd.isna(ratio):
+                logger.warning(f"銘柄 {ticker} の分割比率が無効です")
+                continue
+                
+            if self.apply_split_adjustment(ticker, ratio):
+                success_count += 1
+                
+        logger.info(f"本日の株式分割・株式合併調整を {success_count}/{len(today_df)} 件適用しました")
 
 # if __name__ == "__main__":
-#     sa = SplitAdjustment()
-#     # 直近 1 ヶ月分を取得
-#     type_0 = sa.scrape_all(type=0, seldate=3)
-#     type_5 = sa.scrape_all(type=5, seldate=3)
-
-#     print(type_0.head())
-#     print("======================================")
-#     print(type_5.head())
+#     # ロガー設定
+#     app_logger  # グローバルロガー設定を確実に読み込む
     
+#     sa = SplitAdjustment()
+#     sa.update_split_adjustments()
