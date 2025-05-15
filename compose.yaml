@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  prefect:
+    build: .
+    volumes:
+      - .:/app
+    environment:
+      - PREFECT_API_URL=http://prefect-api:4200/api
+    command: prefect agent start -q default
+    depends_on:
+      - prefect-api
+
+  prefect-api:
+    build: .
+    volumes:
+      - .:/app
+      - prefect-data:/root/.prefect
+    ports:
+      - "4200:4200"
+    environment:
+      - PREFECT_UI_API_URL=http://localhost:4200/api
+    command: prefect server start --host 0.0.0.0
+
+  api:
+    build: .
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    environment:
+      - PREFECT_API_URL=http://prefect-api:4200/api
+    command: uvicorn src.api.main:app --host 0.0.0.0 --port 8000
+    depends_on:
+      - prefect-api
+
+  streamlit:
+    build: .
+    volumes:
+      - .:/app
+    ports:
+      - "8501:8501"
+    environment:
+      - API_URL=http://api:8000
+    command: streamlit run src/api/ui.py
+    depends_on:
+      - api
+
+volumes:
+  prefect-data: 

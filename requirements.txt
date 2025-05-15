@@ -1,0 +1,34 @@
+prefect
+pandas
+polars
+yfinance
+scikit-learn
+backtesting
+fastapi
+streamlit
+uvicorn
+matplotlib
+duckdb
+pyarrow
+openpyxl
+httpx
+pytest
+ruff 
+
+
+# prefect
+# pandas
+# polars
+# yfinance
+# scikit-learn
+# backtesting
+# fastapi
+# streamlit
+# uvicorn
+# matplotlib
+# pyarrow
+# openpyxl
+# httpx
+# python-dotenv
+# beautifulsoup4
+# requests

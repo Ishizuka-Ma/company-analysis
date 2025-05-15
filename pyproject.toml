@@ -1,0 +1,74 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "company_analysis"
+version = "0.1.0"
+description = "株式取引戦略のバックテスト"
+authors = [
+    {name = "Your Name", email = "your.email@example.com"}
+]
+requires-python = "==3.13"
+dependencies = [
+    "prefect",
+    "pandas",
+    "polars",
+    "yfinance",
+    "scikit-learn",
+    "backtesting",
+    "fastapi",
+    "streamlit",
+    "uvicorn",
+    "matplotlib",
+    "duckdb",
+    "pyarrow",
+    "openpyxl",
+    "httpx",
+    "beautifulsoup4>=4.13.4",
+    "lxml>=5.4.0",
+    "html5lib>=1.1",
+    "selenium>=4.32.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "ruff",
+]
+
+[tool.ruff]
+target-version = "py312"
+
+# バージョン指定されていないimport, 未使用import, 使用されていない変数を検出
+select = ["E", "F", "I", "W", "N", "B", "UP", "C90"]
+
+# 行の長さは100文字まで
+line-length = 100
+
+# 除外するファイル
+exclude = [
+    ".git",
+    ".ruff_cache",
+    "__pycache__",
+    "venv",
+    ".venv",
+    "build",
+    "dist",
+]
+
+[tool.ruff.isort]
+# 標準ライブラリ、サードパーティ、自分のモジュールの順に並べる
+known-first-party = ["src"]
+section-order = ["future", "standard-library", "third-party", "first-party", "local-folder"]
+
+[tool.ruff.format]
+# クォーテーションをダブルクォーテーションに統一
+quote-style = "double"
+# インデント幅を4に設定
+indent-style = "space"
+indent-width = 4
+# 行末のセミコロンを削除
+skip-magic-trailing-comma = false
+# 行の折り返しは括弧の後に
+line-ending = "auto" 

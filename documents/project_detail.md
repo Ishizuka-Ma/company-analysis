@@ -18,13 +18,13 @@
 |区分|内容|
 |---|---|
 |目的|・日本株のデータ（日次 OHLCV＋Adj Close＋volume）を用いて、ブラウザから銘柄・期間・閾値などを入力し Prefect フローをオンデマンド実行<br>・結果グラフが即座に返ってくるインタラクティブな学習環境を構築|
-|機能要件|1. **Web UI**： Streamlit で銘柄複数選択・期間・閾値を入力 / `prefect api flow-run inspect` をポーリングしリアルタイム進捗表示<br>2. **API**： FastAPI が Prefect Orion REST へフロー実行リクエストを送信<br>3. **フロー構成**：`フロー構成詳細`を参照<br>4. **将来拡張**：米国株取得は Alpha Vantage を追加タスク化 / 定期実行は Prefect Schedule|
+|機能要件|1. **Web UI**： Streamlit で銘柄複数選択・期間・閾値を入力 / `prefect api flow-run inspect` をポーリングしリアルタイム進捗表示<br>2. **API**： FastAPI が Prefect Orion REST へフロー実行リクエストを送信<br>3. **フロー構成**：`フロー構成詳細`を参照<br>4. **将来拡張**：米国株取得は Alpha Vantage を追加タスク化 / は Prefect Schedule|
 |非機能要件|・レスポンスは30秒以内（ジョブが長い場合は「処理中」表示で非同期）<br>・ローカル実行や 100 % OSS／無料枠で完結できる構成|
 |データ取得|・初回フルロード → 以後は差分更新<br>・初回：API が返せる最古日〜前日分まで一括取得し `data/raw/full/` へ保存<br>・毎日：`latest_date.json` を読み取り、当日分だけ API 取得し `data/raw/incr/` へ追加|
 |メタデータ| `data/meta/latest_date.json` を 1 ファイル保持し Prefect Task で読み書き|
 |成果物|GitHub レポジトリ、Docker Compose 定義、Prefect Flow スクリプト、Parquet データ|  
 |起動方法|・UI/REST API からオンデマンド実行<br>・後日 `prefect schedule` で `"cron 0 18 * * 1-5"` を追加可|
-|拡張要件|・Alpha Vantage を用いた米国株対応<br>・|  
+|拡張要件|・Alpha Vantage を用いた米国株対応|  
 
 ## フロー構成詳細
 
